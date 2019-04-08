@@ -1,18 +1,19 @@
 package proxy
 
 import (
-	"errors"
 	"github.com/stevelacy/dbjumper/pkg"
-	"io"
+	"github.com/stevelacy/dbjumper/pooler"
+	// "io"
+	"errors"
 	"log"
 	"net"
-	"sort"
+	"net/url"
 )
 
 // NetPair is a local and remote connection pair
 type NetPair struct {
-	Address *net.TCPAddr
-	Conn    *net.TCPConn
+	// Address *net.TCPAddr
+	Conn *net.TCPConn
 }
 
 // Connection is a network connection from the local proxy to a remote host
@@ -21,24 +22,36 @@ type Connection struct {
 	remote NetPair
 }
 
+type closer func(*net.TCPConn)
+
 // Start a new proxy listener
-func Start(config *dbjumper.Config) (net.Listener, error) {
+func Start(config *dbjumper.Config) error {
+	if len(config.Instances) == 0 {
+		return errors.New("No instances are configured")
+	}
 
 	host, err := net.ResolveTCPAddr("tcp", config.ListenAddress)
 	if err != nil {
 		log.Println(err)
 	}
 	listener, err := net.ListenTCP("tcp", host)
-
-	remote, err := getRemote(config)
 	if err != nil {
-		log.Println(err)
-		return listener, err
+		return err
 	}
 
-	if err != nil {
-		return listener, err
+	for k, v := range config.Instances {
+		// Assign the Address to an instance
+		parsed, err := url.Parse(v.ConnectionString)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		v.Address = parsed.Host
+		v.Name = k
+		log.Printf("instance connected: %s %s\n", k, parsed.Host)
+		config.Instances[k] = v
 	}
+
 	for {
 		lconn, err := listener.AcceptTCP()
 		if err != nil {
@@ -46,11 +59,7 @@ func Start(config *dbjumper.Config) (net.Listener, error) {
 			continue
 		}
 
-		rconn, err := net.DialTCP("tcp", nil, remote.Address)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
+		rconn, inst, err := pooler.Open(config)
 
 		if err != nil {
 			log.Println(err)
@@ -58,12 +67,12 @@ func Start(config *dbjumper.Config) (net.Listener, error) {
 		}
 		proxy := Connection{
 			local: NetPair{
-				Address: host,
-				Conn:    lconn,
+				// Address: host,
+				Conn: lconn,
 			},
 			remote: NetPair{
-				Address: remote.Address,
-				Conn:    rconn,
+				// Address: instance.Address,
+				Conn: rconn,
 			},
 		}
 
@@ -72,57 +81,44 @@ func Start(config *dbjumper.Config) (net.Listener, error) {
 			proxy.remote.Conn.Close()
 		}()
 
-		go proxy.execute(lconn, rconn)
+		go proxy.execute(lconn, rconn, func(conn *net.TCPConn) {
+			pooler.Close(config, inst, conn)
+		})
 	}
 }
 
-func (c *Connection) execute(local, remote *net.TCPConn) {
-	go pipe(local, remote)
-	go pipe(remote, local)
+func (c *Connection) execute(local, remote *net.TCPConn, end closer) {
+	go pipe(local, remote, end)
+	go pipe(remote, local, end)
 }
 
-func pipe(src, dest *net.TCPConn) {
-	io.Copy(src, dest)
-	io.Copy(dest, src)
+// func pipe(src, dest *net.TCPConn) {
+// 	io.Copy(src, dest)
+// 	io.Copy(dest, src)
+// }
 
-	// for {
-	// 	val, err := src.Read(buff)
-	//
-	// 	if err != nil {
-	// 		if err.Error() != "EOF" {
-	// 			log.Println(err)
-	// 		}
-	// 		return
-	// 	}
-	//
-	// 	b := buff[:val]
-	// 	_, err = dest.Write(b)
-	// 	if err != nil {
-	// 		if err.Error() != "EOF" {
-	// 			log.Println(err)
-	// 		}
-	// 		return
-	// 	}
-	// }
-}
+func pipe(src, dest *net.TCPConn, end closer) {
+	buff := make([]byte, 65535)
+	for {
+		n, err := src.Read(buff)
+		if err != nil {
+			if err.Error() == "EOF" {
+				end(dest)
+				return
+			}
+			log.Println(err)
+			return
+		}
+		b := buff[:n]
 
-func getRemote(config *dbjumper.Config) (NetPair, error) {
-	if len(config.Instances) == 0 {
-		return NetPair{}, errors.New("0 instances configured")
+		_, err = dest.Write(b)
+		if err != nil {
+			if err.Error() == "EOF" {
+				// end(dest)
+				return
+			}
+			log.Println(err)
+			return
+		}
 	}
-
-	var list []dbjumper.Instance
-	for _, v := range config.Instances {
-		list = append(list, v)
-	}
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].ConnCount < list[j].ConnCount
-	})
-
-	addr, err := net.ResolveTCPAddr("tcp", list[0].Address)
-	if err != nil {
-		return NetPair{}, err
-	}
-
-	return NetPair{Address: addr}, nil
 }

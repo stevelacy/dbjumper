@@ -2,7 +2,6 @@ package cli
 
 import (
 	"github.com/stevelacy/dbjumper/pkg"
-	"github.com/stevelacy/dbjumper/pooler"
 	"github.com/stevelacy/dbjumper/proxy"
 	"log"
 	"net"
@@ -20,18 +19,20 @@ func Init() error {
 		ConnectionString: "postgres://postgres@127.0.0.1:5432/stae?sslmode=disable",
 		Master:           true,
 		Type:             "postgres",
-		Connections:      []net.Conn{},
+		Connections:      []*net.TCPConn{},
 	}
-	config.Instances["node2"] = dbjumper.Instance{
-		ConnectionString: "postgres://postgres@127.0.0.1:5432/stae?sslmode=disable",
-		Master:           true,
-		Type:             "postgres",
-		Connections:      []net.Conn{},
-	}
+	// config.Instances["node2"] = dbjumper.Instance{
+	// 	ConnectionString: "postgres://postgres@127.0.0.1:5432/stae?sslmode=disable",
+	// 	Master:           true,
+	// 	Type:             "postgres",
+	// 	Connections:      []net.TCPConn{},
+	// }
 
 	log.Printf("starting on %s", config.ListenAddress)
-	pooler.Open(&config)
-	proxy.Start(&config)
+	err := proxy.Start(&config)
+	if err != nil {
+		log.Fatal(err)
+	}
 	go forever()
 	select {}
 }

@@ -1,4 +1,4 @@
-package proxy
+package pooler
 
 import (
 	"errors"
@@ -27,11 +27,11 @@ func TestGetRemote(t *testing.T) {
 	cfg.Instances["inst1"] = inst1
 	cfg.Instances["inst2"] = inst2
 	cfg.Instances["inst3"] = inst3
-	found, err := getRemote(&cfg)
+	found, err := getAvailableInstance(&cfg)
 	if err != nil {
 		t.Error(err)
 	}
-	if found.Address.String() != inst2.Address {
+	if found.Address != inst2.Address {
 		t.Error(errors.New("incorrect instance returned"))
 	}
 }
@@ -41,23 +41,8 @@ func TestGetRemoteNone(t *testing.T) {
 		ListenAddress: "127.0.0.1:5432",
 		Instances:     map[string]dbjumper.Instance{},
 	}
-	_, err := getRemote(&cfg)
+	_, err := getAvailableInstance(&cfg)
 	if err.Error() != "0 instances configured" {
 		t.Error("Incorrect number of instances returned")
-	}
-}
-
-func TestGetRemoteInvalidAddressPort(t *testing.T) {
-	cfg := dbjumper.Config{
-		ListenAddress: "127.0.0.1:5432",
-		Instances:     map[string]dbjumper.Instance{},
-	}
-	cfg.Instances["inst1"] = dbjumper.Instance{
-		ConnCount: 0,
-		Address:   "something",
-	}
-	_, err := getRemote(&cfg)
-	if err.Error() != "address something: missing port in address" {
-		t.Error("Resolving net should parse port")
 	}
 }
