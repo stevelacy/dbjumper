@@ -1,9 +1,6 @@
 package dbjumper
 
-import (
-	// "github.com/jmoiron/sqlx"
-	"net"
-)
+import ()
 
 // Instance is a replica or master host
 type Instance struct {
@@ -13,8 +10,6 @@ type Instance struct {
 	Name             string
 	Type             string
 	ConnCount        int
-	Connections      []*net.TCPConn // Available connections for use
-	// Add a mutex here
 }
 
 // Config for the db connections

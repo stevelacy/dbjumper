@@ -1,10 +1,10 @@
 package proxy
 
 import (
+	"errors"
 	"github.com/stevelacy/dbjumper/pkg"
 	"github.com/stevelacy/dbjumper/pooler"
 	// "io"
-	"errors"
 	"log"
 	"net"
 	"net/url"
@@ -13,7 +13,7 @@ import (
 // NetPair is a local and remote connection pair
 type NetPair struct {
 	// Address *net.TCPAddr
-	Conn *net.TCPConn
+	Conn *net.Conn
 }
 
 // Connection is a network connection from the local proxy to a remote host
@@ -22,7 +22,7 @@ type Connection struct {
 	remote NetPair
 }
 
-type closer func(*net.TCPConn)
+type closer func(net.Conn)
 
 // Start a new proxy listener
 func Start(config *dbjumper.Config) error {
@@ -30,11 +30,11 @@ func Start(config *dbjumper.Config) error {
 		return errors.New("No instances are configured")
 	}
 
-	host, err := net.ResolveTCPAddr("tcp", config.ListenAddress)
-	if err != nil {
-		log.Println(err)
-	}
-	listener, err := net.ListenTCP("tcp", host)
+	// host, err := net.ResolveTCPAddr("tcp", config.ListenAddress)
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	listener, err := net.Listen("tcp", config.ListenAddress)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func Start(config *dbjumper.Config) error {
 	}
 
 	for {
-		lconn, err := listener.AcceptTCP()
+		lconn, err := listener.Accept()
 		if err != nil {
 			log.Println(err)
 			continue
@@ -68,36 +68,36 @@ func Start(config *dbjumper.Config) error {
 		proxy := Connection{
 			local: NetPair{
 				// Address: host,
-				Conn: lconn,
+				Conn: &lconn,
 			},
 			remote: NetPair{
 				// Address: instance.Address,
-				Conn: rconn,
+				Conn: &rconn,
 			},
 		}
 
 		defer func() {
-			proxy.local.Conn.Close()
-			proxy.remote.Conn.Close()
+			lconn.Close()
+			rconn.Close()
 		}()
 
-		go proxy.execute(lconn, rconn, func(conn *net.TCPConn) {
-			pooler.Close(config, inst, conn)
+		go proxy.execute(lconn, rconn, func(conn net.Conn) {
+			pooler.Free(config, inst, conn)
 		})
 	}
 }
 
-func (c *Connection) execute(local, remote *net.TCPConn, end closer) {
+func (c *Connection) execute(local, remote net.Conn, end closer) {
 	go pipe(local, remote, end)
 	go pipe(remote, local, end)
 }
 
-// func pipe(src, dest *net.TCPConn) {
+// func pipe(src, dest net.Conn, end closer) {
 // 	io.Copy(src, dest)
 // 	io.Copy(dest, src)
 // }
 
-func pipe(src, dest *net.TCPConn, end closer) {
+func pipe(src, dest net.Conn, end closer) {
 	buff := make([]byte, 65535)
 	for {
 		n, err := src.Read(buff)
@@ -114,7 +114,7 @@ func pipe(src, dest *net.TCPConn, end closer) {
 		_, err = dest.Write(b)
 		if err != nil {
 			if err.Error() == "EOF" {
-				// end(dest)
+				end(dest)
 				return
 			}
 			log.Println(err)

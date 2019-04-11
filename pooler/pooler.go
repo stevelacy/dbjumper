@@ -40,53 +40,43 @@ import (
 // }
 
 // Open a connection to a db
-func Open(config *dbjumper.Config) (*net.TCPConn, dbjumper.Instance, error) {
+func Open(config *dbjumper.Config) (net.Conn, dbjumper.Instance, error) {
 
 	inst, err := getAvailableInstance(config)
 	if err != nil {
 		log.Println(err)
-		return &net.TCPConn{}, inst, err
-	}
-
-	fmt.Printf("available connections: %d \n", len(inst.Connections))
-
-	if len(inst.Connections) > 0 {
-		// Lock RwMutext here
-		conn := inst.Connections[0]
-		fmt.Printf("using: %v\n", conn.LocalAddr())
-		inst.Connections = inst.Connections[1:]
-		config.Instances[inst.Name] = inst
-		return conn, inst, nil
+		return nil, inst, err
 	}
 
 	fmt.Printf("opened: %v\n", inst.ConnCount)
 
 	addr, err := net.ResolveTCPAddr("tcp", inst.Address)
 	if err != nil {
-		return &net.TCPConn{}, inst, err
+		return nil, inst, err
 	}
 	conn, err := net.DialTCP("tcp", nil, addr)
+
 	inst.ConnCount++
 	config.Instances[inst.Name] = inst
 
 	if err != nil {
-		return &net.TCPConn{}, inst, err
+		return nil, inst, err
 	}
 
 	return conn, inst, nil
 }
 
-// Close frees a connection to make it available
-func Close(config *dbjumper.Config, inst dbjumper.Instance, conn *net.TCPConn) {
+// Free frees a connection to make it available
+func Free(config *dbjumper.Config, inst dbjumper.Instance, conn net.Conn) {
 	addr := conn.LocalAddr()
 	// local connection closed, ignore
 	if addr.String() != config.ListenAddress {
 		return
 	}
 	fmt.Printf("closed: %s \n", addr)
-	inst.Connections = append(inst.Connections, conn)
 	inst.ConnCount--
 	config.Instances[inst.Name] = inst
+	conn.Close()
 }
 
 func getAvailableInstance(config *dbjumper.Config) (dbjumper.Instance, error) {
