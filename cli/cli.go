@@ -1,32 +1,38 @@
 package cli
 
 import (
-	"github.com/stevelacy/dbjumper/pkg"
-	"github.com/stevelacy/dbjumper/proxy"
+	"io/ioutil"
 	"log"
+	"os"
 	"time"
+
+	"gopkg.in/yaml.v2"
+
+	dbjumper "github.com/stevelacy/dbjumper/pkg"
+	"github.com/stevelacy/dbjumper/proxy"
 )
+
+var config dbjumper.Config
+var configPath = "./dbjumper.yaml"
 
 // Init creates the cli
 func Init() error {
 
-	config := dbjumper.Config{
-		ListenAddress: "127.0.0.1:6543",
-		Instances:     map[string]dbjumper.Instance{},
+	envPath := os.Getenv("config_file")
+	if envPath != "" {
+		configPath = envPath
 	}
-	config.Instances["node1"] = dbjumper.Instance{
-		ConnectionString: "postgres://postgres@127.0.0.1:5432/stae?sslmode=disable",
-		Master:           true,
-		Type:             "postgres",
+	cfg, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return err
 	}
-	// config.Instances["node2"] = dbjumper.Instance{
-	// 	ConnectionString: "postgres://postgres@127.0.0.1:5432/stae?sslmode=disable",
-	// 	Master:           true,
-	// 	Type:             "postgres",
-	// }
+	err = yaml.Unmarshal([]byte(string(cfg)), &config)
+	if err != nil {
+		return err
+	}
 
-	log.Printf("starting on %s", config.ListenAddress)
-	err := proxy.Start(&config)
+	log.Printf("starting on %s", config.Address)
+	err = proxy.Start(&config)
 	if err != nil {
 		log.Fatal(err)
 	}

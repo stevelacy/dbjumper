@@ -2,14 +2,15 @@ package pooler
 
 import (
 	"errors"
-	"github.com/stevelacy/dbjumper/pkg"
 	"testing"
+
+	dbjumper "github.com/stevelacy/dbjumper/pkg"
 )
 
 func TestGetRemote(t *testing.T) {
 	cfg := dbjumper.Config{
-		ListenAddress: "127.0.0.1:5432",
-		Instances:     map[string]dbjumper.Instance{},
+		Address:   "127.0.0.1:5432",
+		Instances: map[string]dbjumper.Instance{},
 	}
 	inst1 := dbjumper.Instance{
 		ConnCount: 40,
@@ -38,8 +39,8 @@ func TestGetRemote(t *testing.T) {
 
 func TestGetRemoteNone(t *testing.T) {
 	cfg := dbjumper.Config{
-		ListenAddress: "127.0.0.1:5432",
-		Instances:     map[string]dbjumper.Instance{},
+		Address:   "127.0.0.1:5432",
+		Instances: map[string]dbjumper.Instance{},
 	}
 	_, err := getAvailableInstance(&cfg)
 	if err.Error() != "0 instances configured" {

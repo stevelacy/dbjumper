@@ -2,10 +2,10 @@ package proxy
 
 import (
 	"errors"
-	"github.com/stevelacy/dbjumper/pkg"
+
+	dbjumper "github.com/stevelacy/dbjumper/pkg"
 	"github.com/stevelacy/dbjumper/pooler"
-	// "io"
-	"log"
+
 	"net"
 	"net/url"
 )
@@ -30,11 +30,7 @@ func Start(config *dbjumper.Config) error {
 		return errors.New("No instances are configured")
 	}
 
-	// host, err := net.ResolveTCPAddr("tcp", config.ListenAddress)
-	// if err != nil {
-	// 	log.Println(err)
-	// }
-	listener, err := net.Listen("tcp", config.ListenAddress)
+	listener, err := net.Listen("tcp", config.Address)
 	if err != nil {
 		return err
 	}
@@ -43,26 +39,36 @@ func Start(config *dbjumper.Config) error {
 		// Assign the Address to an instance
 		parsed, err := url.Parse(v.ConnectionString)
 		if err != nil {
-			log.Println(err)
+			dbjumper.Error(err)
 			continue
 		}
 		v.Address = parsed.Host
 		v.Name = k
-		log.Printf("instance connected: %s %s\n", k, parsed.Host)
+		host, _ := net.ResolveTCPAddr("tcp", parsed.Host)
+		c, err := net.DialTCP("tcp", nil, host)
+		if err != nil {
+			dbjumper.Log("instance offline: %s %s\n", k, parsed.Host)
+			v.Online = false
+			c.Close()
+		} else {
+			dbjumper.Log("instance connected: %s %s\n", k, parsed.Host)
+			v.Online = true
+			c.Close()
+		}
 		config.Instances[k] = v
 	}
 
 	for {
 		lconn, err := listener.Accept()
 		if err != nil {
-			log.Println(err)
+			dbjumper.Error(err)
 			continue
 		}
 
 		rconn, inst, err := pooler.Open(config)
 
 		if err != nil {
-			log.Println(err)
+			dbjumper.Error(err)
 			continue
 		}
 		proxy := Connection{
@@ -92,6 +98,7 @@ func (c *Connection) execute(local, remote net.Conn, end closer) {
 	go pipe(remote, local, end)
 }
 
+// dummy pipe
 // func pipe(src, dest net.Conn, end closer) {
 // 	io.Copy(src, dest)
 // 	io.Copy(dest, src)
@@ -106,7 +113,7 @@ func pipe(src, dest net.Conn, end closer) {
 				end(dest)
 				return
 			}
-			log.Println(err)
+			dbjumper.Error(err)
 			return
 		}
 		b := buff[:n]
@@ -117,7 +124,7 @@ func pipe(src, dest net.Conn, end closer) {
 				end(dest)
 				return
 			}
-			log.Println(err)
+			dbjumper.Error(err)
 			return
 		}
 	}

@@ -1,22 +1,19 @@
 package dbjumper
 
-import ()
-
 // Instance is a replica or master host
 type Instance struct {
 	ConnectionString string
 	Address          string
-	Master           bool
 	Name             string
+	Online           bool
 	Type             string
 	ConnCount        int
 }
 
 // Config for the db connections
 type Config struct {
-	ListenAddress  string // Listen address in host:port notation (127.0.0.1:5432)
+	Address        string // Listen address in host:port notation (127.0.0.1:5432)
 	Instances      map[string]Instance
-	ConnTimeout    int // Time in seconds before the connection is released
-	MaxServerConns int // Max connections to each db
-	// TODO: MaxClientConns int // Max client connections to dbjumper
+	ConnTimeout    int // TODO Time in seconds before the connection is released
+	MaxServerConns int // TODO Max connections to each db
 }
